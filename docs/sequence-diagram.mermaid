@@ -1,0 +1,98 @@
+sequenceDiagram
+    autonumber
+    participant U as 用户(浏览器)
+    participant API as FastAPI 路由
+    participant TM as TaskManager
+    participant BG as 后台线程
+    participant SA as ScriptAgent
+    participant LLM as LLMClient
+    participant DA as DirectorAgent
+    participant VG as VideoGenerator
+    participant FF as ffmpeg_utils
+    participant CA as CriticAgent
+    participant FS as 磁盘(outputs/logs)
+
+    Note over U,FS: 【启动阶段】
+    U->>API: GET / (index.html)
+    API-->>U: 静态页（零 CDN）
+    U->>API: GET /api/health
+    API->>FF: probe_ffmpeg()
+    API-->>U: {status, ffmpeg:true, port}
+    U->>API: GET /api/config/ollama-models
+    API->>LLM: OllamaClient.list_models() (/api/tags)
+    API-->>U: {detected, models}
+
+    Note over U,FS: 【配置阶段】
+    U->>API: POST /api/config (Config)
+    API->>FS: 写 config/config.json
+    U->>API: POST /api/config/test-llm
+    API->>LLM: test_connection()
+    LLM-->>API: {ok, models, latency_ms}
+    API-->>U: 结果 + 状态灯
+
+    Note over U,FS: 【生成阶段：长任务异步】
+    U->>API: POST /api/pipeline/run (PipelineRunRequest)
+    API->>TM: create_task() -> task_id
+    TM->>FS: 建 outputs/<ts>/ 目录
+    API->>BG: threading.Thread(run_pipeline).start()
+    API-->>U: {task_id, output_dir}  立即返回
+    loop 每 1s 轮询
+        U->>API: GET /api/pipeline/{id}/status
+        API->>TM: get(task_id)
+        API-->>U: TaskStatus(阶段+镜头+日志)
+    end
+
+    Note over BG,FS: —— 阶段1 ScriptAgent ——
+    BG->>TM: update_stage(script, RUNNING)
+    BG->>SA: run(dialogue, style, shots, duration)
+    SA->>LLM: chat(messages) 强约束 JSON
+    LLM-->>SA: 原始文本
+    SA->>SA: parse_json_lenient() 容错解析(+重试)
+    SA-->>BG: ScriptDocument
+    BG->>FS: 写 script.json
+    BG->>TM: update_stage(script, SUCCESS)
+
+    Note over BG,FS: —— 阶段2 DirectorAgent ——
+    BG->>TM: update_stage(director, RUNNING)
+    loop 每个 shot_00N
+        BG->>DA: 生成镜头N(prompt, image_ref=上一帧)
+        DA->>VG: generate(prompt, image_ref, duration, size, style, out)
+        VG->>VG: _resolve_adapter() 按 provider
+        VG->>FF: make_mock_video() / 真实API
+        FF-->>VG: shot_00N.mp4
+        VG-->>DA: video_path
+        DA->>FF: extract_last_frame(shot_00N.mp4) -> frames/frame_00N.jpg
+        DA->>TM: update_shot(shot_00N, SUCCESS)
+    end
+    Note over DA: 单镜头失败 -> update_shot(FAILED)，不阻断后续
+    BG->>TM: update_stage(director, SUCCESS)
+
+    Note over BG,FS: —— 阶段3 FFmpeg 拼接 ——
+    BG->>TM: update_stage(concat, RUNNING)
+    BG->>FF: concat_videos(shots) -> final_video.mp4
+    FF-->>BG: final_video.mp4
+    BG->>TM: update_stage(concat, SUCCESS)
+
+    Note over BG,FS: —— 阶段4 CriticAgent ——
+    BG->>TM: update_stage(critic, RUNNING)
+    BG->>CA: run(script, shots, skip_video)
+    CA->>LLM: chat(脚本评估提示词)
+    LLM-->>CA: 4 维分数
+    alt 未跳过视频评估
+        CA->>LLM: chat(视频一致性提示词)
+        LLM-->>CA: 3 维分数
+    else 勾选跳过
+        CA->>CA: video_skipped = true
+    end
+    CA-->>BG: EvaluationReport
+    BG->>FS: 写 evaluation_report.json
+    BG->>TM: update_stage(critic, SUCCESS); state=SUCCESS
+
+    Note over U,FS: 【结果阶段】
+    U->>API: GET /api/pipeline/{id}/video/final_video.mp4
+    API->>FS: FileResponse
+    API-->>U: 视频流（内嵌播放器）
+    U->>API: GET /api/pipeline/{id}/report
+    API-->>U: EvaluationReport
+    U->>API: GET /api/pipeline/{id}/download
+    API-->>U: final_video.mp4（附件）

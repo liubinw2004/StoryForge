@@ -1,0 +1,11 @@
+# StoryForge 运行依赖 —— Python 3.13
+fastapi>=0.115,<0.116
+uvicorn[standard]>=0.32,<0.33
+pydantic>=2.9,<3.0
+httpx>=0.27,<0.29
+openai>=1.51,<2.0
+python-multipart>=0.0.9
+# 说明：
+# - 不引入 moviepy（改用 ffmpeg 命令行，更稳定、无重依赖）
+# - 不引入 sse-starlette（默认走轮询；如需 SSE 再单独添加 sse-starlette>=2.1）
+# - 不引入 jinja2（前端为纯静态 HTML，无需模板引擎）

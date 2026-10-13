@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StoryForge · AI 短剧生成工作台</title>
+  <!-- 零外网依赖：所有样式与脚本均为本地自维护文件，图标为内联 SVG / Unicode -->
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- ===================== 顶部栏 ===================== -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+          <path d="M2 9h20M7 4v16M17 4v16"></path>
+        </svg>
+      </span>
+      <span class="brand-name">StoryForge<span class="brand-sub">· AI 短剧生成工作台</span></span>
+    </div>
+    <div class="topbar-right">
+      <span id="addressChip" class="chip" title="当前服务地址">● 已就绪</span>
+      <button id="helpBtn" class="btn btn-ghost" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.35-1 .9-1 1.7v.3"></path><circle cx="12" cy="17" r=".6" fill="currentColor"></circle></svg>
+        帮助
+      </button>
+    </div>
+  </header>
+
+  <!-- 环境提示横幅 -->
+  <div id="banner" class="banner hidden"></div>
+
+  <main class="layout">
+    <!-- ===================== ① 配置区 ===================== -->
+    <section class="card" id="section-config">
+      <h2 class="card-title"><span class="step">①</span> 配置区</h2>
+
+      <div class="field-group">
+        <div class="group-label">LLM 接入</div>
+        <div class="radio-row">
+          <label class="radio"><input type="radio" name="llm_mode" value="ollama" checked /> 本地 Ollama（零成本）</label>
+          <label class="radio"><input type="radio" name="llm_mode" value="openai" /> OpenAI 兼容接口</label>
+        </div>
+
+        <div class="grid-2">
+          <label class="field">
+            <span class="field-label">Base URL</span>
+            <input id="llmBaseUrl" type="text" placeholder="http://localhost:11434" />
+          </label>
+          <label class="field">
+            <span class="field-label">模型</span>
+            <span class="inline-input">
+              <input id="llmModel" type="text" list="modelOptions" placeholder="qwen2.5:14b" />
+              <button id="refreshModelsBtn" class="btn btn-mini" type="button" title="重新探测本地 Ollama 模型">刷新</button>
+            </span>
+            <datalist id="modelOptions"></datalist>
+          </label>
+        </div>
+        <label class="field" id="llmKeyField">
+          <span class="field-label">API Key</span>
+          <input id="llmApiKey" type="password" placeholder="sk-..." autocomplete="off" />
+        </label>
+        <p id="ollamaHint" class="hint">Ollama 模式无需 API Key；未检测到时会给出提示，可手动填写 Base URL。</p>
+      </div>
+
+      <div class="field-group">
+        <div class="group-label">视频生成</div>
+        <div class="radio-row">
+          <label class="radio"><input type="radio" name="video_provider" value="mock" checked /> 模拟模式（Mock，零成本）</label>
+          <label class="radio"><input type="radio" name="video_provider" value="runninghub" /> RunningHub（工作流 i2v）· 按次计费</label>
+        </div>
+        <div class="grid-2" id="videoConfigFields">
+          <label class="field">
+            <span class="field-label">视频 API Key</span>
+            <input id="videoApiKey" type="password" placeholder="Mock 模式无需填写" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span class="field-label">Base URL（可选）</span>
+            <input id="videoBaseUrl" type="text" placeholder="留空即用 https://www.runninghub.cn；国际站 https://www.runninghub.ai" />
+          </label>
+        </div>
+
+        <div class="grid-2">
+          <label class="field">
+            <span class="field-label">工作流 ID（rh_workflow_id）</span>
+            <input id="rhWorkflowId" type="text" placeholder="2084067455902765057" />
+          </label>
+          <label class="field">
+            <span class="field-label">实例类型（rh_instance_type）</span>
+            <select id="rhInstanceType">
+              <option value="default">default（24G）</option>
+              <option value="plus">plus（48G）</option>
+              <option value="ultra">ultra（84G）</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="grid-2">
+          <label class="field">
+            <span class="field-label">结果保留秒数（10–180）</span>
+            <input id="rhRetainSeconds" type="number" min="10" max="180" step="1" value="180" />
+          </label>
+          <div class="field">
+            <span class="field-label">一致性选项</span>
+            <label class="check"><input id="consistencyLock" type="checkbox" checked /> 提示词锁定卡（角色/场景外观锁定）</label>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <label class="field">
+            <span class="field-label">首帧节点 node_id</span>
+            <input id="rhFirstFrameNodeId" type="text" placeholder="4" />
+          </label>
+          <label class="field">
+            <span class="field-label">首帧字段 field_name</span>
+            <input id="rhFirstFrameFieldName" type="text" placeholder="image" />
+          </label>
+          <label class="field">
+            <span class="field-label">提示词节点 node_id</span>
+            <input id="rhPromptNodeId" type="text" placeholder="7" />
+          </label>
+          <label class="field">
+            <span class="field-label">提示词字段 field_name</span>
+            <input id="rhPromptFieldName" type="text" placeholder="prompt" />
+          </label>
+          <label class="field">
+            <span class="field-label">时长节点 node_id</span>
+            <input id="rhDurationNodeId" type="text" placeholder="6" />
+          </label>
+          <label class="field">
+            <span class="field-label">时长字段 field_name</span>
+            <input id="rhDurationFieldName" type="text" placeholder="duration_seconds" />
+          </label>
+          <label class="field">
+            <span class="field-label">种子节点 node_id</span>
+            <input id="rhSeedNodeId" type="text" placeholder="9" />
+          </label>
+          <label class="field">
+            <span class="field-label">种子字段 field_name</span>
+            <input id="rhSeedFieldName" type="text" placeholder="seed" />
+          </label>
+        </div>
+        <p class="hint">
+          RunningHub <b>工作流 i2v</b>（图生视频，按次计费）：API Key 必填（复用「视频 API Key」，无需额外配置）。
+          此模式会<b>串行</b>逐段生成：先上传一张「初始图」作为第 1 段首帧，第 2 段起自动用上一段尾帧衔接，
+          每段生成完需在「③.6 逐段确认区」点「接受并继续」。Base URL 留空即用国内站
+          <code>https://www.runninghub.cn</code>（国际站 <code>https://www.runninghub.ai</code>）。
+          <b>提示词锁定卡</b>：把角色/场景的固定外观写进提示词，跨镜头更一致。
+          工作流节点参数一般保持默认即可；换用其它工作流模板时按模板实际节点号填写。
+        </p>
+      </div>
+
+      <div class="actions-row">
+        <button id="testLlmBtn" class="btn" type="button">测试 LLM 连接</button>
+        <button id="testVideoBtn" class="btn" type="button">测试视频接口</button>
+        <button id="saveConfigBtn" class="btn btn-primary" type="button">保存配置</button>
+        <span id="configStatus" class="status light-idle">未测试</span>
+      </div>
+    </section>
+
+    <!-- ===================== ② 输入区 ===================== -->
+    <section class="card" id="section-input">
+      <h2 class="card-title"><span class="step">②</span> 输入区</h2>
+
+      <div class="field">
+        <span class="field-label">粗糙对话</span>
+        <textarea id="dialogue" rows="7" placeholder="例如：小明和小红在咖啡馆相遇，小红问小明要不要一起创业……"></textarea>
+      </div>
+
+      <div class="actions-row">
+        <label class="inline-input">
+          <span class="field-label">载入示例对话</span>
+          <select id="exampleSelect">
+            <option value="">— 请选择 —</option>
+          </select>
+        </label>
+        <button id="loadExampleBtn" class="btn btn-mini" type="button">填充</button>
+        <label class="check"><input id="skipVideoEval" type="checkbox" /> 跳过视频评估（省 token）</label>
+        <label class="check"><input id="reviewToggle" type="checkbox" checked /> 生成前确认分镜</label>
+      </div>
+
+      <div class="grid-4">
+        <label class="field">
+          <span class="field-label">风格</span>
+          <select id="styleSelect">
+            <option value="realistic">写实</option>
+            <option value="anime">动漫</option>
+            <option value="animation">动画</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">镜头数</span>
+          <select id="shotCountSelect"></select>
+        </label>
+        <label class="field">
+          <span class="field-label">每镜头时长</span>
+          <select id="shotDurationSelect"></select>
+        </label>
+        <label class="field">
+          <span class="field-label">分辨率</span>
+          <select id="resolutionSelect">
+            <option value="720p">720p（1280×720，更快）</option>
+            <option value="1080p">1080p（1920×1080，更慢）</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="actions-row right">
+        <span id="inputHint" class="hint"></span>
+        <button id="runBtn" class="btn btn-primary btn-lg" type="button">开始生成</button>
+      </div>
+    </section>
+
+    <!-- ===================== ③ 流水线进度区 ===================== -->
+    <section class="card" id="section-progress">
+      <h2 class="card-title"><span class="step">③</span> 流水线进度</h2>
+
+      <div class="stage-list" id="stageList">
+        <div class="stage" data-stage="story">
+          <div class="stage-name">StoryAgent<small>对话 → 完整故事</small></div>
+          <div class="dots" data-dots></div>
+          <div class="stage-detail" data-detail>等待中</div>
+        </div>
+        <div class="stage" data-stage="script">
+          <div class="stage-name">ScriptAgent<small>故事 → 分镜脚本</small></div>
+          <div class="dots" data-dots></div>
+          <div class="stage-detail" data-detail>等待中</div>
+        </div>
+        <div class="stage" data-stage="director">
+          <div class="stage-name">DirectorAgent<small>分镜视频</small></div>
+          <div class="dots" data-dots></div>
+          <div class="stage-detail" data-detail>等待中</div>
+        </div>
+        <div class="stage" data-stage="concat">
+          <div class="stage-name">视频拼接<small>FFmpeg</small></div>
+          <div class="dots" data-dots></div>
+          <div class="stage-detail" data-detail>等待中</div>
+        </div>
+        <div class="stage" data-stage="critic">
+          <div class="stage-name">CriticAgent<small>质量评估</small></div>
+          <div class="dots" data-dots></div>
+          <div class="stage-detail" data-detail>等待中</div>
+        </div>
+      </div>
+
+      <div class="shots-row" id="shotsRow"></div>
+
+      <div class="log-box">
+        <div class="log-title">实时日志</div>
+        <pre id="logBox" class="log-body">（暂无日志）</pre>
+      </div>
+
+      <div class="actions-row right">
+        <button id="viewStoryBtn" class="btn" type="button" disabled>查看剧情</button>
+        <button id="viewScriptBtn" class="btn" type="button" disabled>查看脚本 JSON</button>
+        <button id="resetBtn" class="btn btn-ghost" type="button">清空本次进度</button>
+      </div>
+    </section>
+
+    <!-- ===================== ③.5 分镜确认区 ===================== -->
+    <section class="card hidden" id="section-review">
+      <h2 class="card-title">
+        <span class="step">③.5</span> 分镜确认区
+        <span id="reviewStateChip" class="chip warn">⏸ 待确认</span>
+      </h2>
+      <p class="hint">
+        请核对并可直接修改下方的<b>完整剧情</b>与<b>逐镜头分镜提示词</b>：
+        改剧情会重跑脚本；只改分镜则直接采用。确认后才开始生成视频。
+      </p>
+
+      <div class="review-grid">
+        <div class="review-story">
+          <div class="sub-title">完整故事情节（可编辑）</div>
+          <div class="grid-2">
+            <label class="field">
+              <span class="field-label">标题 title</span>
+              <input id="reviewTitle" type="text" placeholder="未命名故事" />
+            </label>
+            <label class="field">
+              <span class="field-label">题材 genre</span>
+              <input id="reviewGenre" type="text" placeholder="如 都市情感" />
+            </label>
+          </div>
+          <label class="field">
+            <span class="field-label">一句话梗概 logline</span>
+            <input id="reviewLogline" type="text" placeholder="谁 + 想要什么 + 阻碍" />
+          </label>
+          <label class="field">
+            <span class="field-label">场景总设定 setting</span>
+            <input id="reviewSetting" type="text" placeholder="时间 / 地点 / 氛围" />
+          </label>
+          <label class="field">
+            <span class="field-label">完整故事情节 synopsis（核心）</span>
+            <textarea id="reviewSynopsis" rows="9" placeholder="在这里修改完整故事……"></textarea>
+          </label>
+          <div class="grid-2">
+            <div class="field">
+              <span class="field-label">角色（只读）</span>
+              <div id="reviewCharsView" class="readonly-box"></div>
+            </div>
+            <div class="field">
+              <span class="field-label">情节点（只读）</span>
+              <div id="reviewBeatsView" class="readonly-box"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="review-shots">
+          <div class="sub-title">分镜提示词（逐镜头可编辑）</div>
+          <div id="reviewShotList" class="review-shot-list"></div>
+        </div>
+      </div>
+
+      <div class="actions-row right">
+        <span id="reviewHint" class="hint"></span>
+        <button id="reviewSkipBtn" class="btn btn-ghost" type="button">跳过确认（按当前分镜生成）</button>
+        <button id="reviewConfirmBtn" class="btn btn-primary" type="button">✓ 确认并生成视频</button>
+      </div>
+    </section>
+
+    <!-- ===================== ③.6 逐段确认区（串行首帧链） ===================== -->
+    <section class="card hidden" id="section-chain">
+      <h2 class="card-title">
+        <span class="step">③.6</span> 逐段确认区（串行首帧链）
+        <span id="chainChip" class="chip">—</span>
+      </h2>
+      <p class="hint" id="chainHint">
+        脚本已就绪：请先上传一张「初始图」，程序会把它作为第 1 段首帧；第 2 段起自动承接上一段尾帧。
+        每段生成完成后请点「接受并继续」，全部接受后自动拼接成片。
+      </p>
+
+      <div class="field-group" id="chainStartArea">
+        <div class="group-label">上传初始图（PNG / JPG）</div>
+        <div class="actions-row">
+          <input id="chainFileInput" type="file" accept="image/png,image/jpeg" />
+          <button id="chainStartBtn" class="btn btn-primary" type="button">上传并开始</button>
+        </div>
+      </div>
+
+      <div id="chainSegments" class="chain-segments"></div>
+    </section>
+
+    <!-- ===================== ④ 视频剪辑区 ===================== -->
+    <section class="card" id="section-preview">
+      <h2 class="card-title"><span class="step">④</span> 视频剪辑区</h2>
+
+      <div class="edit-preview-row">
+        <div class="edit-player-wrap">
+          <div class="sub-title">剪辑预览 <span class="hint">（按启用片段 × 顺序 × 起止时间播放）</span></div>
+          <video id="previewPlayer" class="video-player" controls preload="metadata"></video>
+          <div class="actions-row">
+            <button id="playEditBtn" class="btn" type="button" disabled>▶ 播放剪辑</button>
+            <span id="editSummary" class="hint">预计时长 —</span>
+          </div>
+        </div>
+        <div class="edit-side">
+          <div class="sub-title">原始成片</div>
+          <video id="finalVideo" class="video-player" controls preload="metadata"></video>
+          <div class="actions-row">
+            <button id="downloadFinalBtn" class="btn" type="button" disabled>下载成片</button>
+            <span id="finalMeta" class="hint"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sub-title" style="margin-top:16px;">时间轴 · 拖拽排序 / 双臂裁剪 / 播放头定位 / 一刀两段</div>
+      <div class="timeline-scroll">
+        <div class="timeline-inner">
+          <div class="timeline-ruler" id="timelineRuler"></div>
+          <div class="timeline-track" id="editList"><div class="empty">尚无片段</div></div>
+          <div class="timeline-playhead hidden" id="timelinePlayhead"></div>
+        </div>
+      </div>
+      <div class="actions-row">
+        <button id="splitClipBtn" class="btn btn-ghost" type="button" disabled>✂ 在播放头处分割</button>
+        <span class="hint">拖动片段可排序；拖左右两侧手柄裁剪；单击轨道或刻度尺定位播放头。</span>
+      </div>
+
+      <div class="actions-row right">
+        <span id="editExportHint" class="hint"></span>
+        <button id="resetEditBtn" class="btn btn-ghost" type="button" disabled>重置剪辑</button>
+        <button id="exportBtn" class="btn btn-primary" type="button" disabled>导出成片</button>
+      </div>
+      <div id="exportResult" class="export-result hidden"></div>
+
+      <div class="sub-title" style="margin-top:16px;">分镜明细</div>
+      <div id="shotList" class="shot-list"><div class="empty">尚无分镜</div></div>
+      <div id="shotSummary" class="hint"></div>
+    </section>
+
+    <!-- ===================== ⑤ 评估报告区 ===================== -->
+    <section class="card" id="section-report">
+      <h2 class="card-title"><span class="step">⑤</span> 评估报告</h2>
+      <div id="reportBody" class="report-body"><div class="empty">尚无评估报告</div></div>
+      <div class="actions-row right">
+        <button id="downloadReportBtn" class="btn" type="button" disabled>下载评估 JSON</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">StoryForge · 本地单机应用 · 双击 start.bat 即可启动 · 生成的产物保存在 outputs/ 目录</footer>
+
+  <!-- ===================== 帮助弹窗 ===================== -->
+  <div id="helpModal" class="modal hidden">
+    <div class="modal-backdrop" data-close="1"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <span>使用帮助</span>
+        <button id="helpCloseBtn" class="btn btn-ghost btn-mini" type="button" data-close="1">关闭</button>
+      </div>
+      <div class="modal-body">
+        <h3>快速开始（6 步）</h3>
+        <ol>
+          <li><b>启动：</b>双击 <code>start.bat</code>，浏览器会自动打开本页面。</li>
+          <li><b>配置：</b>选择 LLM 模式（本地 Ollama 零成本 / OpenAI 兼容接口），点「测试 LLM 连接」看到绿灯。</li>
+          <li><b>视频：</b>默认「模拟模式（Mock）」，无需任何 Key 即可出片；如需真实出片再选「RunningHub（工作流 i2v）」并填 API Key（复用「视频 API Key」）。</li>
+          <li><b>输入：</b>粘贴一段粗糙对话（或用「载入示例对话」），选择风格、镜头数、时长、分辨率。</li>
+          <li><b>生成：</b>点「开始生成」，进度区会实时显示<b>五个阶段</b>：剧情补全 → 分镜脚本 → 分镜视频 → 视频拼接 → 质量评估。</li>
+          <li><b>确认分镜（默认开启）：</b>勾选「生成前确认分镜」后，脚本生成完毕会停在「③.5 分镜确认区」，可修改剧情/分镜后再点「确认并生成视频」；不想确认可在输入区取消勾选。</li>
+          <li><b>逐段确认（串行首帧链）：</b>确认分镜后进入「③.6 逐段确认区」，上传一张「初始图」后，程序逐段生成、逐段等待你「接受并继续」，全部接受后自动拼接成片。</li>
+          <li><b>剪辑与导出：</b>在「④ 视频剪辑区」的时间轴上拖拽排序 / 双臂裁剪 / 一刀两段，实时预览后点「导出成片」，生成<b>新文件</b>（不覆盖原始成片）。</li>
+        </ol>
+        <h3>剧情补全 与 剧情编辑</h3>
+        <ul>
+          <li>系统会先把粗糙对话补全为完整故事情节（<code>story.json</code>），再据此拆解分镜提示词。</li>
+          <li>点进度区「查看剧情」打开剧情弹窗：<b>标题 / 题材 / 梗概 / 场景设定 / 完整情节</b>均可直接编辑（角色与情节节点为只读参考）。</li>
+          <li>改完点 <b>「保存并重新生成分镜」</b>：会<b>新建一个任务</b>，用你改好的剧情直接生成分镜，跳过剧情补全阶段（省一次 LLM 调用）；当前任务与产物不受影响。</li>
+          <li>镜头数、单镜头时长、风格、分辨率沿用「② 输入区」的设置——想改这些请先在输入区调好再点该按钮。</li>
+        </ul>
+        <h3>分镜确认区（③.5）</h3>
+        <ul>
+          <li>勾选「生成前确认分镜」后，<b>脚本生成完毕会先挂起</b>，出现「③.5 分镜确认区」，此时尚未生成任何视频。</li>
+          <li>左侧可修改<b>完整剧情</b>（标题 / 题材 / 梗概 / 设定 / synopsis），右侧可逐条修改每个镜头的<b>分镜提示词 / 动作 / 运镜 / 对白 / 时长</b>。</li>
+          <li><b>确认并生成视频：</b>若改了剧情 → 重跑脚本；只改分镜 → 直接采用；随后在<b>同一任务</b>内继续生成视频与报告。</li>
+          <li><b>跳过确认：</b>不做修改，按当前分镜直接生成。</li>
+          <li>时长须为 2–10 秒、分镜提示词不能为空，否则会提示并保持挂起、不会开始生成。</li>
+        </ul>
+        <h3>专业剪辑区（④ 时间轴）</h3>
+        <ul>
+          <li><b>播放头与刻度尺：</b>顶部为秒刻度尺；播放头随预览播放移动。单击刻度尺或轨道可定位播放头。</li>
+          <li><b>排序：</b>直接<b>拖动片段块</b>到目标位置即可重排。</li>
+          <li><b>裁剪：</b>拖动片段<b>左右两侧的手柄</b>调整 in / out（起点不得越过终点，越界自动回退）。</li>
+          <li><b>启用/禁用：</b>点击片段左上角的 <b>✓ / ⊘</b> 切换；禁用的片段置灰，不参与预览与导出。</li>
+          <li><b>一刀两段（分割）：</b>选中片段并把播放头落到该片段内部，点「✂ 在播放头处分割」，即拆为两段，可各自排序 / 裁剪 / 启用。</li>
+          <li><b>预览：</b>点「▶ 播放剪辑」按当前时间轴顺序播放，播放头同步走动。</li>
+          <li><b>导出：</b>点「导出成片」生成 <code>exports/export_&lt;时间戳&gt;.mp4</code> 与配对方案 <code>exports/edit_plan_&lt;时间戳&gt;.json</code>（含每个片段的 clip_id），<b>绝不覆盖</b> <code>final_video.mp4</code>。</li>
+          <li><b>刷新恢复：</b>剪辑方案会<b>自动保存到服务端</b>（<code>edit_plan_draft.json</code>）。误关页面或刷新后会自动恢复；旧草稿（无 clip_id）按「每镜头一段」原样还原。</li>
+        </ul>
+        <h3>常见问题</h3>
+        <ul>
+          <li><b>FFmpeg 缺失：</b>顶部会出现红色提示；请安装 FFmpeg 并加入 PATH（下载：gyan.dev/ffmpeg/builds）。</li>
+          <li><b>Ollama 未启动：</b>提示「无法连接 localhost:11434」，请先执行 <code>ollama serve</code>，或在配置区手动填写 Base URL。</li>
+          <li><b>JSON 解析失败：</b>部分小模型输出不稳定，系统会自动重试 2 次；仍失败请更换更大的模型。</li>
+          <li><b>某段生成失败：</b>不会中断整个流程，可在「③.6 逐段确认区」对该段点「重生成本段」（自动换随机种子重试）。</li>
+          <li><b>端口被占用：</b>服务会自动使用 8001、8002……，顶部会显示实际地址。</li>
+        </ul>
+        <h3>产物位置</h3>
+        <p>每次任务生成独立目录 <code>outputs/&lt;时间戳&gt;/</code>，内含 <code>story.json</code>（完整剧情）、<code>script.json</code>、<code>shots/</code>、<code>frames/</code>、<code>final_video.mp4</code>、<code>evaluation_report.json</code>；剪辑导出的成片与方案位于 <code>exports/</code> 子目录（配对命名，不覆盖原始成片）。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 脚本 JSON 查看弹窗 -->
+  <div id="scriptModal" class="modal hidden">
+    <div class="modal-backdrop" data-close="1"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <span>脚本 JSON</span>
+        <span>
+          <button id="scriptDownloadBtn" class="btn btn-mini" type="button">下载</button>
+          <button class="btn btn-ghost btn-mini" type="button" data-close="1">关闭</button>
+        </span>
+      </div>
+      <div class="modal-body"><pre id="scriptJson" class="json-view">（尚未生成）</pre></div>
+    </div>
+  </div>
+
+  <!-- 剧情编辑弹窗（可编辑 → 重新生成分镜） -->
+  <div id="storyModal" class="modal hidden">
+    <div class="modal-backdrop" data-close="1"></div>
+    <div class="modal-card modal-wide">
+      <div class="modal-head">
+        <span>剧情编辑 · 完整故事情节</span>
+        <span>
+          <button id="storyDownloadBtn" class="btn btn-mini" type="button">下载 story.json</button>
+          <button class="btn btn-ghost btn-mini" type="button" data-close="1">关闭</button>
+        </span>
+      </div>
+      <div class="modal-body">
+        <p id="storyEditHint" class="hint">
+          修改下方字段后点「保存并重新生成分镜」，会<b>新建一个任务</b>（保留当前任务不动），
+          直接用你改好的剧情生成分镜——<b>不再重新调用剧情补全</b>，更省时间。
+          镜头数与单镜头时长沿用「② 输入区」的设置。
+        </p>
+
+        <div class="grid-2">
+          <label class="field">
+            <span class="field-label">标题 title</span>
+            <input id="storyTitleInput" type="text" placeholder="未命名故事" />
+          </label>
+          <label class="field">
+            <span class="field-label">题材 genre</span>
+            <input id="storyGenreInput" type="text" placeholder="如 都市情感 / 科幻温情" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span class="field-label">一句话梗概 logline</span>
+          <input id="storyLoglineInput" type="text" placeholder="谁 + 想要什么 + 遇到什么阻碍" />
+        </label>
+
+        <label class="field">
+          <span class="field-label">场景总设定 setting</span>
+          <input id="storySettingInput" type="text" placeholder="时间 / 地点 / 光线氛围" />
+        </label>
+
+        <label class="field">
+          <span class="field-label">完整故事情节 synopsis（核心，将直接决定分镜内容）</span>
+          <textarea id="storySynopsisInput" rows="10" placeholder="在这里改写完整故事……"></textarea>
+        </label>
+
+        <div class="grid-2">
+          <div class="field">
+            <span class="field-label">角色（只读）</span>
+            <div id="storyCharsView" class="readonly-box"></div>
+          </div>
+          <div class="field">
+            <span class="field-label">情节节点（只读）</span>
+            <div id="storyBeatsView" class="readonly-box"></div>
+          </div>
+        </div>
+
+        <details class="json-details">
+          <summary>查看完整 story.json 原文</summary>
+          <pre id="storyJson" class="json-view">（尚未生成）</pre>
+        </details>
+      </div>
+      <div class="modal-foot">
+        <span id="storyRerunHint" class="hint"></span>
+        <button id="storyRerunBtn" class="btn btn-primary" type="button" disabled>保存并重新生成分镜</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

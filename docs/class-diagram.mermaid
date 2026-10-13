@@ -1,0 +1,167 @@
+classDiagram
+    class Config {
+        +LLMMode llm_mode
+        +str llm_base_url
+        +str llm_api_key
+        +str llm_model
+        +VideoProvider video_provider
+        +str video_api_key
+        +str video_base_url
+        +str video_model
+        +Resolution resolution
+        +str style
+        +int shot_count
+        +int shot_duration
+        +bool skip_video_eval
+        +to_public() Config
+    }
+
+    class ScriptDocument {
+        +str title
+        +str style
+        +list~Character~ characters
+        +str scene
+        +list~str~ positions
+        +list~Shot~ shots
+    }
+    class Character {
+        +str name
+        +str desc
+    }
+    class Shot {
+        +str shot_id
+        +str dialogue
+        +str action
+        +str camera
+        +int duration
+        +str prompt
+    }
+
+    class ShotResult {
+        +str shot_id
+        +ShotState state
+        +str video_path
+        +str frame_path
+        +str error
+        +float cost_seconds
+    }
+
+    class TaskStatus {
+        +str task_id
+        +TaskState state
+        +str output_dir
+        +dict stages
+        +list~ShotResult~ shots
+        +list~str~ logs
+        +str error
+        +float started_at
+        +float finished_at
+    }
+
+    class EvaluationReport {
+        +str task_id
+        +ScriptScore script
+        +VideoScore video
+        +bool video_skipped
+        +str comment
+    }
+    class ScriptScore {
+        +float coherence
+        +float shootability
+        +float character_consistency
+        +float plot_completeness
+        +float total
+        +dict comments
+    }
+    class VideoScore {
+        +float visual_consistency
+        +float dialogue_match
+        +float style_fidelity
+        +float total
+        +dict comments
+    }
+
+    class LLMClient {
+        <<abstract>>
+        +chat(messages, temperature, max_tokens) str
+        +list_models() list~str~
+        +test_connection() dict
+    }
+    class OpenAICompatClient {
+        +chat(messages, **kw) str
+        +list_models() list~str~
+    }
+    class OllamaClient {
+        +chat(messages, **kw) str
+        +list_models() list~str~
+    }
+
+    class VideoGeneratorInterface {
+        <<abstract>>
+        +generate(prompt, image_ref, duration, size, style, out_path) str
+        +test_connection() dict
+    }
+    class MockAdapter {
+        +generate(...) str
+    }
+    class RunningHubAdapter {
+        +generate(...) str
+    }
+    class VideoGenerator {
+        +generate(prompt, image_ref, duration, size, style, out_path) str
+        -_resolve_adapter() VideoGeneratorInterface
+    }
+
+    class BaseAgent {
+        <<abstract>>
+        +LLMClient llm
+        +run(...)
+    }
+    class ScriptAgent {
+        +run(dialogue, style, shots, duration) ScriptDocument
+    }
+    class DirectorAgent {
+        +run(script, config, ctx) list~ShotResult~
+    }
+    class CriticAgent {
+        +run(script, shots, skip_video) EvaluationReport
+    }
+
+    class TaskManager {
+        +create_task() str
+        +get(task_id) TaskStatus
+        +update(task_id, **kw)
+        +append_log(task_id, msg)
+        +run_pipeline(task_id, request, config)
+    }
+    class ConfigStore {
+        +load() Config
+        +save(cfg) Config
+        +path
+    }
+
+    ScriptDocument "1" *-- "many" Character
+    ScriptDocument "1" *-- "many" Shot
+    TaskStatus "1" *-- "many" ShotResult
+    EvaluationReport "1" *-- "1" ScriptScore
+    EvaluationReport "1" *-- "1" VideoScore
+
+    LLMClient <|-- OpenAICompatClient
+    LLMClient <|-- OllamaClient
+    VideoGeneratorInterface <|-- MockAdapter
+    VideoGeneratorInterface <|-- RunningHubAdapter
+
+    BaseAgent <|-- ScriptAgent
+    BaseAgent <|-- DirectorAgent
+    BaseAgent <|-- CriticAgent
+
+    ScriptAgent --> LLMClient
+    DirectorAgent --> VideoGenerator
+    CriticAgent --> LLMClient
+    DirectorAgent ..> ScriptDocument
+    ScriptAgent ..> ScriptDocument
+    CriticAgent ..> EvaluationReport
+    VideoGenerator --> VideoGeneratorInterface
+    TaskManager ..> TaskStatus
+    ConfigStore ..> Config
+    DirectorAgent --> TaskManager

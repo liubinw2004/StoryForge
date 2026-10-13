@@ -1,0 +1,33 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# ---- 构建产物（PyInstaller / 打包）----
+build/
+dist/
+*.spec.bak
+
+# ---- 运行时产物 ----
+logs/
+outputs/
+*.log
+
+# ---- 本地配置（含真实 API Key，严禁提交）----
+# 复制 config.example.json 为 config.json 后按需填写
+config/config.json
+config/config.json.bak_*
+
+# ---- 分发打包素材中的敏感项 ----
+# SSH 私钥/公钥（仅供本地分发包使用，严禁入库）
+packaging/ssh_key/
+packaging/pyinstaller_build.log
+
+# ---- IDE / 系统 ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
